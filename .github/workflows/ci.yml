@@ -30,6 +30,9 @@ jobs:
           echo "53cc1e9dc3a97b0ff56d1a1572b3ffdbba4fcaee3eb78c4391b9b1443f92284a  openmsx.zip" | sha256sum -c -
           mkdir -p "$HOME/openmsx" && unzip -q openmsx.zip -d "$HOME/openmsx"
           echo "$HOME/openmsx/bin" >> "$GITHUB_PATH"
+          # The portable build has no compiled-in data directory: without this
+          # it looks for share/ in /share and dies on the first unicodemap.
+          echo "OPENMSX_SYSTEM_DATA=$HOME/openmsx/share" >> "$GITHUB_ENV"
 
       - name: Cache the pinned Nextor files
         uses: actions/cache@v4
