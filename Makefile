@@ -152,3 +152,17 @@ test: all
 	@set -e; for t in tests/*/test.sh; do \
 		echo "Running: $$t"; sh $$t; \
 	done; echo "All tests passed."
+
+# Assemble the release assets under derived/release/: every ROM, their sha1s,
+# an openMSX machine XML selecting them, and the notes.
+release-assets: all
+	@rm -rf derived/release && mkdir -p derived/release
+	@cp $(ROMS_FULLPATH) derived/release/
+	@cd derived/release && shasum -a 1 *.rom > SHA1SUMS
+	@shasum -a 1 $(ROMS_FULLPATH) | sed -nf tools/subst_sha1.sed > derived/release/sha1.sed
+	@sed -f derived/release/sha1.sed configs/openMSX/C-BIOS_MSX2.xml \
+		| sed -e 's|<description>An MSX2 machine using C-BIOS|<description>An MSX2 machine using C-BIOS with the KEYROW routine (hosts Nextor)|' \
+		> derived/release/C-BIOS_MSX2_Nextor.xml
+	@rm derived/release/sha1.sed
+	@sh tools/release-notes.sh "$${TAG:-untagged}" > derived/release/NOTES.md
+	@ls derived/release
