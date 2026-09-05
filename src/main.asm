@@ -752,11 +752,37 @@ chkram_select:
                 ld      (SSL_REGS),a
                 ; HL contains the start of the memory area (for BOTTOM variable).
                 exx
+                jr      ui_start        ; step over the KEYROW entry at $0D89
+
+;--------------------------------
+; $0D89 KEYROW
+; Function : Decodes the newly pressed keys of one keyboard matrix row and
+;            appends their characters to KEYBUF, as the tail of the keyboard
+;            interrupt does in the Microsoft MSX BIOS. Not a documented entry
+;            point, but Nextor's kernel calls it directly at boot
+;            (CHECK_IS_RUSSIAN in source/kernel/bank0/init.mac), so the
+;            address is fixed: without it, no Nextor kernel boots on C-BIOS.
+; Input    : A - bit mask of the keys newly pressed in the row (bit n = column n)
+;            B - row counter as in the keyboard interrupt: row = 11 - B
+; Output   : characters appended to KEYBUF
+; Registers: all preserved
+; Remark   : Only the entry point is pinned here. The body sits further down,
+;            past the font, because the code between here and the font table
+;            at $1bbf has room for three bytes and not for the routine.
+;            The check comes before the fill on purpose: a negative fill only
+;            warns and wraps $ around 64K, so a check after it never fires.
+        IF $ > $0D89
+                .error "KEYROW must be at $0D89: code before it has grown past that address"
+        ENDIF
+                ds      $0D89 - $
+keyrow:
+                jp      keyrow_body
 
 ;----------------------
 ; User interface
 ;----------------------
 
+ui_start:
                 ld      hl,$F300
                 ld      sp,hl           ; set $F300 to stack pointer
 
@@ -2763,8 +2789,7 @@ key_chk_lp:
                 ld      b,$08
 key_bit_lp:
                 rrca
-                jr      c,key_store
-key_bit_next:
+                call    c,key_store
                 inc     hl
                 djnz    key_bit_lp
                 inc     ix
@@ -2788,6 +2813,10 @@ key_set_delay:
                 pop     af
                 ret
 
+; Store the key under (HL) into KEYBUF.
+; In: HL = scan table entry, B = 8 - column, C = 11 - row.
+; Preserves AF, BC, DE, HL, IX.
+; Called from key_in and from keyrow.
 key_store:
                 push    af
                 ld      a,c
@@ -2871,7 +2900,7 @@ key_ascii:
                 pop     hl
 key_store_end2:
                 pop     af
-                jp      key_bit_next
+                ret
 
 ;--------------------------------
 key_put_into_buf:
@@ -3088,6 +3117,9 @@ lp_strprn:
 
                 jp      hang_up_mode
 
+        IF $ > $1bbf
+                .error "the code before the font table has grown past $1bbf"
+        ENDIF
                 ds      $1bbf - $
                 include "font.asm"
 ;
@@ -3111,6 +3143,60 @@ vram_clear_lp:  xor     a
         ENDIF
 
                 include "slot.asm"
+
+;--------------------------------
+; Body of the KEYROW routine entered at $0D89; see the comment there.
+; In : A - bit mask of the keys newly pressed in the row (bit n = column n)
+;      B - row counter as in the keyboard interrupt: row = 11 - B
+; Out: characters appended to KEYBUF; all registers preserved.
+; Uses the same tables and rules as key_in: plain or SHIFT table for rows 0-5
+; depending on NEWKEY+6 bit 0, one table for rows 6-10, function keys expanded
+; to their strings. CAPS lock and GRAPH/CODE are ignored, as key_in ignores them.
+;--------------------------------
+keyrow_body:
+                push    hl
+                push    de
+                push    bc
+                push    af
+                ld      c,b             ; C = 11 - row, what key_store expects
+                ld      a,11
+                sub     b               ; A = row, 0..10
+                cp      6
+                jr      c,keyrow_rows_0_5
+                ; Rows 6-10: one table, whatever the modifiers.
+                sub     6
+                ld      hl,scode_tbl_otherkeys
+                jr      keyrow_offset
+keyrow_rows_0_5:
+                ; Rows 0-5: plain or SHIFT table, selected like key_in does.
+                ld      d,a
+                ld      hl,scode_tbl
+                ld      a,(NEWKEY + 6)
+                rrca                    ; bit 0 clear = SHIFT held
+                jr      c,keyrow_plain
+                ld      hl,scode_tbl_shift
+keyrow_plain:
+                ld      a,d
+keyrow_offset:
+                add     a,a
+                add     a,a
+                add     a,a             ; row * 8, at most 80
+                ld      e,a
+                ld      d,0
+                add     hl,de           ; HL = first table entry of the row
+                pop     af
+                push    af              ; A = the key mask again (AF is on top)
+                ld      b,8
+keyrow_bit_lp:
+                rrca
+                call    c,key_store
+                inc     hl
+                djnz    keyrow_bit_lp
+                pop     af
+                pop     bc
+                pop     de
+                pop     hl
+                ret
 
 ;---------------------------------
 ; system messages
