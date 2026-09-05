@@ -8,7 +8,9 @@ proc look {} {
     if {![catch {get_screen} screen]} {
         if {[string first "C-BIOS 0.29" $screen] >= 0} {
             puts stderr "PASS: C-BIOS banner on screen"
+            # openMSX's Tcl `exit` does not unwind the script, so return too.
             exit 0
+            return
         }
     }
     after time 0.5 look
