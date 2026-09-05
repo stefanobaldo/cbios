@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    env:
+      # openMSX is driven by a Tcl script with `set renderer none`; SDL still
+      # initialises video and audio, and the runner has neither a display nor
+      # a sound device.
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pasmo
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pasmo
+          dpkg -s pasmo | grep '^Version'
+
+      - name: Install openMSX 21.0
+        run: |
+          curl -fsSL -o openmsx.zip https://github.com/openMSX/openMSX/releases/download/RELEASE_21_0/openmsx-21.0-linux-x86_64-bin.zip
+          echo "53cc1e9dc3a97b0ff56d1a1572b3ffdbba4fcaee3eb78c4391b9b1443f92284a  openmsx.zip" | sha256sum -c -
+          mkdir -p "$HOME/openmsx" && unzip -q openmsx.zip -d "$HOME/openmsx"
+          echo "$HOME/openmsx/bin" >> "$GITHUB_PATH"
+
+      - name: Cache the pinned Nextor files
+        uses: actions/cache@v4
+        with:
+          path: derived/test/cache
+          key: nextor-2.1.4-4eafcd3a-3db8c809-5792ff3f
+
+      - name: Build
+        run: make
+
+      - name: Test
+        run: make test
