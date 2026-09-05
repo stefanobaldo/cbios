@@ -21,7 +21,7 @@ ROMS_FULLPATH:=$(ROMS:%=derived/bin/cbios_%.rom)
 PASMO=pasmo
 
 # Mark all logical targets as such.
-.PHONY: all dist clean list_stub
+.PHONY: all dist clean list_stub test release-assets
 
 all: $(ROMS_FULLPATH)
 
@@ -145,3 +145,10 @@ dist: all
 
 list_stub:
 	cd src && grep -n _text *.asm | grep ',0$$' | awk '{print $$1}' | sed -e 's/_text://'
+
+# Run every test under tests/, in name order, stopping at the first failure.
+# Needs the ROMs built and openmsx on PATH (or $OPENMSX).
+test: all
+	@set -e; for t in tests/*/test.sh; do \
+		echo "Running: $$t"; sh $$t; \
+	done; echo "All tests passed."
